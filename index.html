@@ -309,6 +309,22 @@
     .pill{min-height:56px}
     .cta-row .btn,.actions .btn{min-height:52px}
   }
+  /* ===== Address autocomplete (portal dropdown, appended to body) ===== */
+  .ac-list{position:fixed;z-index:200;margin:0;padding:6px;list-style:none;
+    background:#19212B;border:1px solid var(--line);border-radius:14px;
+    box-shadow:0 24px 60px -18px rgba(0,0,0,.85);
+    max-height:280px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+    font-family:var(--sans)}
+  .ac-list[hidden]{display:none}
+  .ac-opt{min-height:48px;display:flex;align-items:center;gap:.6rem;padding:.65rem .85rem;
+    border-radius:10px;cursor:pointer;color:var(--white);font-size:1rem;line-height:1.3;
+    touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none}
+  .ac-opt .pin{flex:0 0 auto;color:var(--gold);font-size:.95rem}
+  .ac-opt .mt{font-weight:700;color:var(--gold-bright)}
+  .ac-opt:hover,.ac-opt.active{background:rgba(235,183,62,.18)}
+  .ac-opt:active{background:rgba(235,183,62,.28)}
+  .ac-empty{padding:.7rem .85rem;color:var(--muted);font-size:.95rem;line-height:1.4}
+  @media (prefers-reduced-motion:reduce){.ac-list{scroll-behavior:auto}}
 </style>
 </head>
 <body>
@@ -424,32 +440,19 @@
         <div class="grid2">
           <div class="field" id="f-pickup">
             <label class="lbl" for="pickup">Pick-up suburb / address</label>
-            <input type="text" id="pickup" list="melb" autocomplete="off" placeholder="e.g. Southbank, VIC" />
+            <input type="text" id="pickup" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false"
+                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="ac-list-pickup"
+                   data-suburbs placeholder="e.g. Southbank" />
             <p class="err" id="e-pickup">Enter a pick-up location.</p>
           </div>
           <div class="field" id="f-dropoff">
             <label class="lbl" for="dropoff">Drop-off suburb / address</label>
-            <input type="text" id="dropoff" list="melb" autocomplete="off" placeholder="e.g. Melbourne Airport T2" />
+            <input type="text" id="dropoff" autocomplete="off" autocapitalize="words" autocorrect="off" spellcheck="false"
+                   role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="ac-list-dropoff"
+                   data-suburbs placeholder="e.g. Melbourne Airport T2" />
             <p class="err" id="e-dropoff">Enter a drop-off location.</p>
           </div>
         </div>
-        <datalist id="melb">
-          <option value="Melbourne Airport — Terminal 1 (Qantas)"></option>
-          <option value="Melbourne Airport — Terminal 2 (International)"></option>
-          <option value="Melbourne Airport — Terminal 3 (Virgin)"></option>
-          <option value="Melbourne Airport — Terminal 4 (Jetstar)"></option>
-          <option value="Avalon Airport (AVV)"></option><option value="Melbourne CBD"></option>
-          <option value="Southern Cross Station"></option><option value="Flinders Street Station"></option>
-          <option value="Southbank, VIC"></option><option value="Docklands, VIC"></option>
-          <option value="St Kilda, VIC"></option><option value="South Yarra, VIC"></option>
-          <option value="Richmond, VIC"></option><option value="Carlton, VIC"></option>
-          <option value="Fitzroy, VIC"></option><option value="Brunswick, VIC"></option>
-          <option value="Footscray, VIC"></option><option value="Box Hill, VIC"></option>
-          <option value="Glen Waverley, VIC"></option><option value="Dandenong, VIC"></option>
-          <option value="Frankston, VIC"></option><option value="Werribee, VIC"></option>
-          <option value="Essendon, VIC"></option><option value="Brighton, VIC"></option>
-          <option value="Crown Melbourne"></option><option value="MCG (Melbourne Cricket Ground)"></option>
-        </datalist>
 
         <div class="field" id="f-service">
           <label class="lbl" id="svcLbl">Service / vehicle type</label>
@@ -699,6 +702,141 @@
   document.getElementById("smsBtn").addEventListener("click",guard);
 
   updateSummary();
+})();
+</script>
+<script>
+/* =====================================================================
+   13melbourne maxi — Melbourne address autocomplete (self-contained)
+   - Independent module. Does NOT touch the booking / SMS-compiler IIFE above.
+   - Communicates by setting input.value and dispatching a bubbling 'input'
+     event, so the existing summary + sms:0466999048?&body=... logic updates
+     itself naturally and the selected suburb is packaged into the SMS exactly
+     as typed values would be.
+   - Free typing is never blocked: the list only suggests; any text remains.
+   ===================================================================== */
+(function(){
+  "use strict";
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /* --- Verified Greater Melbourne suburb data (+ key terminals & landmarks) --- */
+  var PLACES = [
+    "Melbourne CBD","Southbank","Docklands","South Wharf","East Melbourne","West Melbourne","North Melbourne","Carlton","Carlton North","Parkville","Kensington","Flemington","Ascot Vale","Moonee Ponds","Aberfeldie","Essendon","Essendon North","Essendon West","Strathmore","Strathmore Heights","Airport West","Niddrie","Keilor East","Keilor","Keilor Park","Keilor Downs","Keilor Lodge","Tullamarine","Gladstone Park","Gowanbrae","Avondale Heights","Maribyrnong","Maidstone","Braybrook","Tottenham","West Footscray","Footscray","Seddon","Yarraville","Spotswood","Kingsville","Newport","Williamstown","Williamstown North","Altona","Altona North","Altona Meadows","Seaholme","Laverton","Laverton North","Point Cook","Williams Landing","Hoppers Crossing","Tarneit","Truganina","Wyndham Vale","Werribee","Werribee South","Manor Lakes","Mount Cottrell","Little River","Sunshine","Sunshine North","Sunshine West","Albion","Ardeer","Deer Park","Cairnlea","St Albans","Kings Park","Kealba","Sydenham","Taylors Lakes","Hillside","Caroline Springs","Burnside","Burnside Heights","Ravenhall","Rockbank","Melton","Melton South","Melton West","Brookfield","Fraser Rise","Aintree","Plumpton","Diggers Rest","Sunbury","Bulla","Greenvale","Roxburgh Park","Craigieburn","Mickleham","Donnybrook","Kalkallo","Wollert","Epping","Epping North","Lalor","Thomastown","Mill Park","Bundoora","Kingsbury","Macleod","Watsonia","Watsonia North","Greensborough","Briar Hill","Montmorency","Eltham","Eltham North","Research","Lower Plenty","Viewbank","Rosanna","Heidelberg","Heidelberg Heights","Heidelberg West","Bellfield","Ivanhoe","Ivanhoe East","Eaglemont","Fairfield","Alphington","Northcote","Thornbury","Preston","Reservoir","Regent West","Coburg","Coburg North","Pascoe Vale","Pascoe Vale South","Oak Park","Glenroy","Hadfield","Fawkner","Brunswick","Brunswick East","Brunswick West","Fitzroy","Fitzroy North","Clifton Hill","Collingwood","Abbotsford","Richmond","Cremorne","Burnley","Hawthorn","Hawthorn East","Kew","Kew East","Camberwell","Canterbury","Surrey Hills","Mont Albert","Mont Albert North","Box Hill","Box Hill North","Box Hill South","Blackburn","Blackburn North","Blackburn South","Nunawading","Forest Hill","Mitcham","Vermont","Vermont South","Burwood","Burwood East","Ashwood","Chadstone","Malvern","Malvern East","Armadale","Toorak","South Yarra","Prahran","Windsor","St Kilda","St Kilda East","St Kilda West","Balaclava","Elwood","Ripponlea","Elsternwick","Caulfield","Caulfield North","Caulfield South","Caulfield East","Glen Huntly","Carnegie","Murrumbeena","Hughesdale","Oakleigh","Oakleigh South","Oakleigh East","Huntingdale","Clayton","Clayton South","Notting Hill","Mount Waverley","Glen Waverley","Wheelers Hill","Mulgrave","Springvale","Springvale South","Noble Park","Noble Park North","Keysborough","Dandenong","Dandenong North","Dandenong South","Bangholme","Lyndhurst","Lynbrook","Hampton Park","Lynbrook","Endeavour Hills","Doveton","Eumemmerring","Hallam","Narre Warren","Narre Warren North","Narre Warren South","Berwick","Beaconsfield","Officer","Pakenham","Cranbourne","Cranbourne North","Cranbourne East","Cranbourne West","Cranbourne South","Clyde","Clyde North","Botanic Ridge","Junction Village","Devon Meadows","Tooradin","Frankston","Frankston North","Frankston South","Langwarrin","Langwarrin South","Carrum Downs","Skye","Sandhurst","Seaford","Bonbeach","Carrum","Patterson Lakes","Chelsea","Chelsea Heights","Edithvale","Aspendale","Aspendale Gardens","Waterways","Mordialloc","Parkdale","Mentone","Cheltenham","Highett","Moorabbin","Moorabbin Airport","Bentleigh","Bentleigh East","Mckinnon","Ormond","Hampton","Hampton East","Sandringham","Black Rock","Beaumaris","Brighton","Brighton East","Gardenvale","Hampton","Bayside","Cheltenham","Clarinda","Heatherton","Dingley Village","Braeside","Mordialloc","Aspendale","Mornington","Mount Eliza","Mount Martha","Safety Beach","Dromana","Rosebud","Rye","Sorrento","Portsea","Hastings","Somerville","Tyabb","Baxter","Pearcedale","Mooroolbark","Lilydale","Chirnside Park","Croydon","Croydon North","Croydon South","Croydon Hills","Kilsyth","Kilsyth South","Bayswater","Bayswater North","Boronia","The Basin","Ferntree Gully","Upper Ferntree Gully","Knoxfield","Wantirna","Wantirna South","Scoresby","Rowville","Lysterfield","Ringwood","Ringwood East","Ringwood North","Heathmont","Warranwood","Wonga Park","Park Orchards","Donvale","Doncaster","Doncaster East","Templestowe","Templestowe Lower","Bulleen","Warrandyte","Warrandyte South","Montrose","Mount Evelyn","Wandin North","Seville","Healesville","Yarra Glen","Coldstream","Gruyere","Tecoma","Belgrave","Upwey","Selby","Emerald","Cockatoo","Gembrook","Olinda","Kallista","Sassafras","Monbulk","Silvan","Hurstbridge","Diamond Creek","Wattle Glen","Doreen","Mernda","Yarrambat","Plenty","Arthurs Creek","Whittlesea","Hampton Park","Avonsleigh",
+    /* Terminals & landmarks */
+    "Melbourne Airport — Terminal 1 (Qantas)","Melbourne Airport — Terminal 2 (International)","Melbourne Airport — Terminal 3 (Virgin)","Melbourne Airport — Terminal 4 (Jetstar)","Avalon Airport (AVV)","Moorabbin Airport","Essendon Fields Airport","Southern Cross Station","Flinders Street Station","Melbourne Central Station","Crown Melbourne","MCG (Melbourne Cricket Ground)","Marvel Stadium","Melbourne Convention & Exhibition Centre","Royal Melbourne Hospital","The Alfred Hospital","Monash Medical Centre","Royal Children's Hospital","University of Melbourne","Monash University Clayton","Chadstone Shopping Centre","Highpoint Shopping Centre","Queen Victoria Market","DFO South Wharf"
+  ];
+  /* de-duplicate defensively */
+  (function(){var seen={},out=[];for(var i=0;i<PLACES.length;i++){var k=PLACES[i].toLowerCase();if(!seen[k]){seen[k]=1;out.push(PLACES[i]);}}PLACES=out;})();
+
+  function norm(s){return (s||"").toLowerCase().replace(/[.,]/g,"").trim();}
+  function search(q){
+    q=norm(q); if(!q) return [];
+    var starts=[],contains=[];
+    for(var i=0;i<PLACES.length;i++){
+      var n=norm(PLACES[i]);
+      if(n.indexOf(q)===0) starts.push(PLACES[i]);
+      else if(n.indexOf(q)>-1) contains.push(PLACES[i]);
+      if(starts.length>=8) break;
+    }
+    return starts.concat(contains).slice(0,8);
+  }
+  function esc(s){return s.replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+  function highlight(label,q){
+    q=norm(q); var n=norm(label); var idx=n.indexOf(q);
+    if(q&&idx>-1){ // map normalised index back roughly to original (lengths align since norm only lowercases/strips .,)
+      // find original substring by case-insensitive search
+      var re=new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"i");
+      return esc(label).replace(re,function(m){return '<span class="mt">'+m+'</span>';});
+    }
+    return esc(label);
+  }
+
+  function vpHeight(){return (window.visualViewport&&window.visualViewport.height)||window.innerHeight;}
+
+  function attach(input){
+    if(!input) return;
+    var list=document.createElement("ul");
+    list.className="ac-list"; list.id=input.getAttribute("aria-controls")||("ac-"+input.id);
+    list.setAttribute("role","listbox"); list.hidden=true;
+    document.body.appendChild(list);
+    var items=[], active=-1, open=false;
+
+    function close(){ if(!open) return; open=false; list.hidden=true; input.setAttribute("aria-expanded","false"); input.removeAttribute("aria-activedescendant"); active=-1; }
+    function position(){
+      var r=input.getBoundingClientRect();
+      var vh=vpHeight(); var below=vh-r.bottom; var above=r.top;
+      var placeAbove = below<210 && above>below;
+      list.style.left=r.left+"px"; list.style.width=r.width+"px";
+      var maxH=Math.max(140,Math.min(280,(placeAbove?above:below)-12));
+      list.style.maxHeight=maxH+"px";
+      // measure then place
+      var h=Math.min(list.scrollHeight, maxH);
+      if(placeAbove){ list.style.top=Math.max(8,(r.top-h-6))+"px"; }
+      else { list.style.top=(r.bottom+6)+"px"; }
+    }
+    function render(q){
+      var res=search(q); items=res;
+      if(!q){ close(); return; }
+      list.innerHTML="";
+      if(res.length){
+        res.forEach(function(label,i){
+          var li=document.createElement("li");
+          li.className="ac-opt"; li.setAttribute("role","option"); li.id=list.id+"-opt-"+i;
+          li.innerHTML='<span class="pin" aria-hidden="true">📍</span><span class="tx">'+highlight(label,q)+'</span>';
+          li.addEventListener("pointerdown",function(e){ e.preventDefault(); /* keep focus, no blur race */ choose(label); });
+          list.appendChild(li);
+        });
+      }else{
+        var d=document.createElement("li");
+        d.className="ac-empty"; d.setAttribute("aria-disabled","true");
+        d.textContent="No suburb match — you can type your full address.";
+        list.appendChild(d);
+      }
+      active=-1;
+      open=true; list.hidden=false; input.setAttribute("aria-expanded","true");
+      position();
+    }
+    function choose(value){
+      input.value=value;
+      // notify the booking engine (bubbles to #sf 'input' listener → updateSummary + SMS href)
+      input.dispatchEvent(new Event("input",{bubbles:true}));
+      input.dispatchEvent(new Event("change",{bubbles:true}));
+      close();
+      input.blur(); // dismiss mobile keyboard cleanly after a single tap
+    }
+    function move(d){
+      if(!open||!items.length) return;
+      active=(active+d+items.length)%items.length;
+      var opts=list.querySelectorAll(".ac-opt");
+      opts.forEach(function(o,i){o.classList.toggle("active",i===active);});
+      if(opts[active]){ input.setAttribute("aria-activedescendant",opts[active].id); opts[active].scrollIntoView({block:"nearest"}); }
+    }
+
+    input.addEventListener("input",function(){ render(input.value); });
+    input.addEventListener("focus",function(){
+      if(input.value) render(input.value);
+      // lift field above the on-screen keyboard so the dropdown stays visible
+      setTimeout(function(){ try{ input.scrollIntoView({block:"center",behavior:reduce?"auto":"smooth"}); }catch(e){} },reduce?0:260);
+    });
+    input.addEventListener("keydown",function(e){
+      if(e.key==="ArrowDown"){ if(!open) render(input.value); else move(1); e.preventDefault(); }
+      else if(e.key==="ArrowUp"){ move(-1); e.preventDefault(); }
+      else if(e.key==="Enter"){ if(open&&active>-1){ e.preventDefault(); choose(items[active]); } /* else allow free text */ }
+      else if(e.key==="Escape"){ close(); }
+    });
+    input.addEventListener("blur",function(){ setTimeout(close,120); });
+
+    // keep the portal aligned while the page/keyboard moves; never block typing
+    window.addEventListener("scroll",function(){ if(open) position(); },{passive:true});
+    window.addEventListener("resize",function(){ if(open) position(); });
+    if(window.visualViewport){
+      window.visualViewport.addEventListener("resize",function(){ if(open) position(); });
+      window.visualViewport.addEventListener("scroll",function(){ if(open) position(); });
+    }
+    document.addEventListener("pointerdown",function(e){ if(open && e.target!==input && !list.contains(e.target)) close(); });
+  }
+
+  var fields=document.querySelectorAll("input[data-suburbs]");
+  for(var i=0;i<fields.length;i++) attach(fields[i]);
 })();
 </script>
 </body>
